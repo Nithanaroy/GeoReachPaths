@@ -1,4 +1,4 @@
-import os
+import os, __builtin__
 import pickle
 
 import networkx as nx
@@ -49,15 +49,19 @@ def construct_gowalla_graph(social_edges, spatial_edges, output_path=None):
     return G
 
 
-def upsert(d, k, v):
-    """
-    append to or insert a key, k into dictionary d
-    :param d: dictionary instance
-    :param k: key
-    :param v: value
-    :return: None
-    """
-    if k in d:
-        d[k].add(v)
-    else:
-        d[k] = set([v])
+def extend_dictionary():
+    __builtin__.dict = myDict
+
+
+class myDict(dict):
+    def upsert(self, k, v):
+        """
+        append to or insert a key, k into dictionary d
+        :param k: any hashable object as key
+        :param v: instance of set()
+        :return: None
+        """
+        if k in self:
+            self[k] = self[k].union(v)
+        else:
+            self[k] = v
