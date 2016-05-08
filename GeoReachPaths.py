@@ -20,51 +20,68 @@ class GeoReachPaths:
         extend_dictionary()  # adds upsert method to dict class
 
         self.index = dict()  # geo reach index. key = vertex. value = a set of reachable regions
-        self.G = G  # nx.condensation(G)  # convert to DAG
+        self.G = G
         self.RF = RF
         self.M = M
         self.available_res = [GeoReachPaths._DEFAULT_RES]
 
     def create_index(self):
-        G = self.G  # get the condensed graph for creating index
+        G = nx.condensation(self.G)  # convert to DAG
+        index = dict()
 
-        # Add 1 hop reachability
-        for v in G.nodes():  # for each vertex in G
-            for u in G[v].keys():  # for each vertex in G.Adj(v)
-                if 'spatial' in G.node[u]:  # is 'u' a spatial node?
-                    self.index.upsert(v, {self.region(u)})  # if yes, add block # of 'u' to v's meta
+        # Add 1 hop reachability for a DAG
+        for v in G.nodes():  # for each component
+            for w in G.node[v]['members']:  # for each node in the component
+                for u in self.G[w].keys():  # for each vertex in G.Adj(v)
+                    if 'spatial' in self.G.node[u]:  # is 'u' a spatial node?
+                        index.upsert(v, {self.region(u)})  # if yes, add block # of 'u' to v's meta
 
         # Add multi hop reachability
-        self._do_dfs(G)
-        return G  # send the condensed graph
+        self._do_dfs(G, index)
 
-    def _do_dfs(self, G):
+        for v in G.nodes():  # for each component
+            for w in G.node[v]['members']:  # for each node in the component
+                try:
+                    self.index[w] = index[v]  # set component's index entry to each vertex in it
+                except KeyError:
+                    pass  # ignore if index entry is not found as they don't have any spatial connections
+
+        return self.index
+
+    def _do_dfs(self, G, index):
+        """
+        Perform a depth first search and fill region rechability index
+        :param G: networkx instance of a graph. G should be a DAG
+        :param index: GeoReachIndex, a dict() instance and not a dictionary literal
+        :return: None
+        """
         # Preparing the graph
         for u in G.nodes():
-            G.node[u]['visited'] = False  # for DFS
+            G.node[u]['color'] = 'W'
 
         for v in G.nodes():  # for each vertex in the graph
-            if not G.node[v]['visited']:  # if this vertex is not yet visited by DFS
-                self._dfs_visit(G, v)  # visit and update meta data for the vertex
+            if G.node[v]['color'] is 'W':  # if this vertex is not yet visited by DFS
+                self._dfs_visit(G, v, index)  # visit and update meta data for the vertex
 
-    def _dfs_visit(self, G, v):
+    def _dfs_visit(self, G, v, index):
         try:
+            G.node[v]['color'] = 'G'
             for u in G[v].keys():  # for each vertex in G.Adj(v)
-                if not G.node[u]['visited']:  # if 'u' is not visited
-                    self.index.upsert(v, self._dfs_visit(G, u))  # visit 'u' and add its meta data to 'v'
+                if G.node[u]['color'] is 'W':  # if 'u' is not visited
+                    index.upsert(v, self._dfs_visit(G, u, index))  # visit 'u' and add its meta data to 'v'
                 else:
-                    self.index.upsert(v, self.index[u])  # simply add u's meta data to 'v'
-            G.node[v]['visited'] = True  # set v.visited to True
-            return self.index[v]
+                    index.upsert(v, index[u])  # simply add u's meta data to 'v'
+            G.node[v]['color'] = 'B'  # set v.visited to True
+            return index[v]
         except KeyError:
             return set()
 
     def region(self, v):
-        r = GeoReachPaths._DEFAULT_RES
+        r = GeoReachPaths._DEFAULT_RES * 1.0  # to enable floating division later
         x_blocks = (self._MAX_LNG - self._MIN_LNG) / r
-        y_blocks = (self._MIN_LAT - self._MAX_LAT) / r
+        y_blocks = (self._MAX_LAT - self._MIN_LAT) / r
         lat = self.G.node[v]['spatial']['lat'] + 90
         lng = self.G.node[v]['spatial']['lng'] + 180
-        x_block_id = math.ceil(lng / x_blocks)
-        y_block_id = math.ceil(lat / y_blocks)
+        x_block_id = int(math.ceil(lng / x_blocks))
+        y_block_id = int(math.ceil(lat / y_blocks))
         return x_block_id * r + y_block_id
