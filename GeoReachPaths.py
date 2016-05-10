@@ -107,16 +107,19 @@ class GeoReachPaths:
         """
         self._init(s)
         Q = heapq.heapify([(self.G.node[v]['d'], v) for v in self.G.nodes()])  # Priority Q keyed by distance from s
-        R_in_blockids = self._region_for_latlng(R)
+        R_in_2d = self._dim_promotion(self._region_for_latlng(R))
         nearest_vertices = []
         while len(Q) > 0:  # while Q is not empty
-            u = heapq.heappop(Q)  # u <- EXTRACT_MIN(Q)
-            if self._vertex_reaches(u, R_in_blockids):  # if u reaches the given region R
+            dist, u = heapq.heappop(Q)  # u <- EXTRACT_MIN(Q)
+
+            if self._vertex_lies_in(u, R):  # if u lies in the given region R
+                nearest_vertices.append(u)  # collect the vertex
+                if len(nearest_vertices) is K:  # if K vertices are collected
+                    return self._path_for(nearest_vertices)  # return the paths for each
+
+            if self._vertex_reaches(u, R_in_2d):  # if u reaches the given region R
                 for v in self.G[u].keys():  # for each v in G.Adj(u)
-                    if self._vertex_lies_in(v, R):  # if v lies in the given region R
-                        nearest_vertices.append(v)  # collect the vertex
-                        if len(nearest_vertices) is K:  # if K vertices are collected
-                            return self._path_for(nearest_vertices)  # return the paths for each
+                    self._relax(u, v)  # update the distance of v from s
 
     def _path_for(self, vertices):
         """
@@ -151,39 +154,56 @@ class GeoReachPaths:
         """
         Transforms a region from lat-long system to block IDs
         :param R: list of co-ordinates [nelat, nelong, swlat, swlong]
-        :return: region in terms of block IDs in the order - [ne, sw, se, nw]
+        :return: region in terms of block IDs in the order - (ne, sw, se, nw) as a tuple
         """
         ne = self._region_for(R[0], R[1])
         sw = self._region_for(R[2], R[3])
         se = self._region_for(R[2], R[1])
         nw = self._region_for(R[0], R[3])
-        return [ne, sw, se, nw]
+        return ne, sw, se, nw
 
     def _vertex_lies_in(self, v, R):
         """
         Checks if vertex v lies in region R
-        :param v: a spatial vertex in the Graph
+        :param v: any vertex in the Graph
         :param R: list of co-ordinates [nelat, nelong, swlat, swlong]
         :return: True if v lies in R, else False
         """
-        lat = self.G.node[v]['spatial']['lat']
-        lng = self.G.node[v]['spatial']['lng']
-        if R[2] <= lat <= R[0] and R[3] <= lng <= R[1]:
-            return True
+        if 'spatial' in self.G.node[v]:
+            lat = self.G.node[v]['spatial']['lat']
+            lng = self.G.node[v]['spatial']['lng']
+            return R[2] <= lat <= R[0] and R[3] <= lng <= R[1]
         return False
 
     def _vertex_reaches(self, u, R):
         """
         Checks if vertex 'u' can reach region 'R' using GeoReachPaths index
+        Region should be anchored at south-west co-ordinate, i.e. origin of the 2D system should be SW point of R
         :param u: vertex whose index entry will be checked for its reachability to R
-        :param R: region in terms of block IDs in the order - [ne, sw, se, nw]
+        :param R: region in 2D co-ordinates in the order - (ne, sw, se, nw) as a tuple
         :return: True if reachable else False
         """
         ne, sw, se, nw = R
         r = self._DEFAULT_RES
-        width = se - sw
-        for r in self.index[u]:  # TODO: Faster way to check if vertex u reaches region R
-            for block in range(sw, nw + 1, r):
-                if block <= r <= block + width:
-                    return True
+        for reg in self.index[u]:
+            p = ((R[1] - reg) / r, (R[1] - reg) % r)
+            if sw[0] <= p[0] <= se[0] and sw[1] <= p[1] <= nw[1]:
+                return True
         return False
+
+    def _dim_promotion(self, R, o=None):
+        """
+        Transforms a 1D rectangular region to a 2D co-ordinate system
+        Sets the bottom left corner of R as the origin if o is not supplied
+        :param R: region in terms of block IDs in the order - (ne, sw, se, nw) as a tuple
+        :param o: block ID to be used as origin
+        :return: a list of 2D co-ordinates - ((2, 2), (0, 0), (2, 0), (0, 2)) as a tuple of tuples
+        """
+        r = self._DEFAULT_RES
+        sw = (0, 0)
+        if o:
+            sw = ((R[1] - o) / r, (R[1] - o) % r)
+        se = (R[2] - R[1] + sw[0], sw[1])
+        nw = (sw[0], (R[3] - R[1]) / r + sw[1])
+        ne = (se[0], nw[1])
+        return ne, sw, se, nw
