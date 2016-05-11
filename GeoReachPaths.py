@@ -64,14 +64,14 @@ class GeoReachPaths:
             G.node[u]['color'] = 'W'
 
         for v in G.nodes():  # for each vertex in the graph
-            if G.node[v]['color'] is 'W':  # if this vertex is not yet visited by DFS
+            if G.node[v]['color'] == 'W':  # if this vertex is not yet visited by DFS
                 self._dfs_visit(G, v, index)  # visit and update meta data for the vertex
 
     def _dfs_visit(self, G, v, index):
         try:
             G.node[v]['color'] = 'G'
             for u in G[v].keys():  # for each vertex in G.Adj(v)
-                if G.node[u]['color'] is 'W':  # if 'u' is not visited
+                if G.node[u]['color'] == 'W':  # if 'u' is not visited
                     index.upsert(v, self._dfs_visit(G, u, index))  # visit 'u' and add its meta data to 'v'
                 else:
                     index.upsert(v, index[u])  # simply add u's meta data to 'v'
@@ -124,7 +124,7 @@ class GeoReachPaths:
 
             if self._vertex_lies_in(v, R):  # if v lies in the given region R
                 nearest_vertices.append(v)  # collect the vertex
-                if len(nearest_vertices) is K:  # if K vertices are collected
+                if len(nearest_vertices) == K:  # if K vertices are collected
                     break  # stop Dijkstra's
 
             if self._vertex_reaches(v, R2d, Rid):  # if v reaches the given region R

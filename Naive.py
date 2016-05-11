@@ -63,7 +63,7 @@ def topk_naive3(G, source, R, K):
 
         if _vertex_lies_in(G, v, R):  # if v lies in the given region R
             nearest_vertices.append(v)  # collect the vertex
-            if len(nearest_vertices) is K:  # if K vertices are collected
+            if len(nearest_vertices) == K:  # if K vertices are collected
                 break  # stop Dijkstra's
 
         for u, e in G.succ[v].items():

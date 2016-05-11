@@ -128,16 +128,19 @@ class TestGeoReachPaths(unittest.TestCase):
 def runner():
     start = time.time()
     G = construct_gowalla_graph('../data/edges.txt', '../data/checkins.txt')
-    # G = pickle.load(open('graph.txt'))
     print "After %ss: Loaded the graph into memory" % (time.time() - start,)
-    s = USER_NODE_PREFIX + '776'  # user id with most check-ins
-    R = (37.6273862693, -122.38735199, 37.6175628388, -122.398681641)
-    K = 10
     t = GeoReachPaths(G, 2, 2)
     t.create_index()
     print "After %ss: Created Index" % (time.time() - start,)
+
+    s = USER_NODE_PREFIX + '776'  # user id with most check-ins
+    # R = (37.6273862693, -122.38735199, 37.6175628388, -122.398681641)  # only 48 biz in this region
+    R = (37.7935076241, -122.279205322, 37.5489326106, -122.515411377)  # 10,685 biz in this region, 0 Visited by s
+    K = 10
+    start = time.time()
     topk, dist, paths = t.range_reach_paths(s, R, K)
-    print "After %ss: Found topK" % (time.time() - start,)
+    taken = time.time() - start
+    # print "K = %s. Time = %ss" % (K, taken)
     print topk
 
 

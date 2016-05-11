@@ -27,7 +27,7 @@ def construct_gowalla_graph(social_edges, spatial_edges, output_path=None):
     with open(social_edges, 'r') as f:
         for l in f.read().splitlines():
             edge = l.split("\t")
-            G.add_edge(USER_NODE_PREFIX + edge[0], USER_NODE_PREFIX + edge[-2], weight=int(edge[-1]))
+            G.add_edge(USER_NODE_PREFIX + edge[0], USER_NODE_PREFIX + edge[-2], weight=float(edge[-1]))
 
     business_nodes = set([])
     with open(spatial_edges, 'r') as f:
@@ -42,7 +42,7 @@ def construct_gowalla_graph(social_edges, spatial_edges, output_path=None):
     with open(spatial_edges, 'r') as f:
         for l in f.read().splitlines():
             edge = l.split("\t")
-            G.add_edge(USER_NODE_PREFIX + edge[0], BUSINESS_NODE_PREFIX + edge[-2], weight=int(edge[-1]))
+            G.add_edge(USER_NODE_PREFIX + edge[0], BUSINESS_NODE_PREFIX + edge[-2], weight=float(edge[-1]))
 
     if output_path:
         pickle.dump(G, open(output_path, 'w'))
