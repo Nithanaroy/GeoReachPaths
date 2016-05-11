@@ -1,4 +1,5 @@
 import math, heapq
+from itertools import count
 import networkx as nx
 from Common import extend_dictionary
 
@@ -84,89 +85,76 @@ class GeoReachPaths:
         lng = self.G.node[v]['spatial']['lng'] + 180
         return self._region_for(lat, lng)
 
-    def _region_for(self, lat, lng):
+    def _region_for(self, pos_lat, pos_lng):
         """
-        Finds the region ID for a given latitude and longitude
+        Finds the region ID for a given latitude and longitude offset by 90 and 180 respectively
         :return: region ID as an integer
         """
         r = GeoReachPaths._DEFAULT_RES * 1.0  # to enable floating division later
         x_block_width = (self._MAX_LNG - self._MIN_LNG) / r
         y_block_width = (self._MAX_LAT - self._MIN_LAT) / r
-        x_block_id = min(math.floor(lng / x_block_width), r - 1)
-        y_block_id = min(math.floor(lat / y_block_width), r - 1)
-        return int(x_block_id * r + y_block_id)
+        x_block_id = min(math.floor(pos_lng / x_block_width), r - 1)
+        y_block_id = min(math.floor(pos_lat / y_block_width), r - 1)
+        # return int(x_block_id * r + y_block_id)
+        return int(y_block_id * r + x_block_id)
 
-    def range_reach_paths(self, s, R, K):
+    def range_reach_paths(self, source, R, K):
         """
         Finds the K shortest paths from s in region R
         Index should be created using create_index() before calling this function
-        :param s: name of the source vertex
-        :param R: region of interest as a list of co-ordinates [nelat, nelong, swlat, swlong]
+        :param source: name of the source vertex
+        :param R: region of interest as a list of co-ordinates (nelat, nelong, swlat, swlong)
         :param K: number of shortest paths required as a positive integer
         :return: a list of K paths sorted by distance from s. Eg: [[1,2,3], [1,5,6]]
         """
-        self._init(s)
-        Q = heapq.heapify([(self.G.node[v]['d'], v) for v in self.G.nodes()])  # Priority Q keyed by distance from s
-        R_in_2d = self._dim_promotion(self._region_for_latlng(R))
-        nearest_vertices = []
-        while len(Q) > 0:  # while Q is not empty
-            dist, u = heapq.heappop(Q)  # u <- EXTRACT_MIN(Q)
+        paths = {source: [source]}
+        dist = {}  # dictionary of final distances
+        seen = {source: 0}  # intermediate distances from source
+        c = count()
+        fringe = []  # use heapq with (distance,label) tuples
+        nearest_vertices = []  # vertices that fall in R sorted by distance from source
+        Rid = self._region_for_latlng(R)  # region in terms of block IDs
+        R2d = self._dim_promotion(Rid)  # region in 2D co-ordinate system with SW point as (0, 0)
+        heapq.heappush(fringe, (0, next(c), source))
+        while fringe:
+            (d, _, v) = heapq.heappop(fringe)
+            if v in dist:
+                continue  # already searched this node.
+            dist[v] = d
 
-            if self._vertex_lies_in(u, R):  # if u lies in the given region R
-                nearest_vertices.append(u)  # collect the vertex
+            if self._vertex_lies_in(v, R):  # if v lies in the given region R
+                nearest_vertices.append(v)  # collect the vertex
                 if len(nearest_vertices) is K:  # if K vertices are collected
-                    return self._path_for(nearest_vertices)  # return the paths for each
+                    break  # stop Dijkstra's
 
-            if self._vertex_reaches(u, R_in_2d):  # if u reaches the given region R
-                for v in self.G[u].keys():  # for each v in G.Adj(u)
-                    self._relax(u, v)  # update the distance of v from s
+            if self._vertex_reaches(v, R2d, Rid):  # if v reaches the given region R
+                for u, e in self.G.succ[v].items():
+                    vu_dist = dist[v] + e.get('weight')
+                    if u not in seen or vu_dist < seen[u]:
+                        seen[u] = vu_dist
+                        heapq.heappush(fringe, (vu_dist, next(c), u))
+                        if paths is not None:
+                            paths[u] = paths[v] + [u]
 
-    def _path_for(self, vertices):
-        """
-        Finds the paths for each vertex in the list of vertices
-        :param vertices: list of vertices
-        :return: a list of paths. Eg: [[1,2,3], [4,5,6]]
-        """
-        paths = []
-        for v in vertices:
-            path = []
-            is_source = False
-            while not is_source:
-                path.insert(0, v)
-                v = self.G.node[v]['p']
-                is_source = v is None
-            paths.append(path)
-        return paths
-
-    def _init(self, s):
-        for v in self.G.nodes():  # for each vertex in G
-            self.G.node[v]['d'] = float('inf')  # distance from source
-            self.G.node[v]['p'] = None  # parent node
-        self.G.node[s]['d'] = 0
-
-    def _relax(self, u, v):
-        # Every edge should have a weight attribute         --> (1)
-        if self.G.node[v]['d'] > self.G.node[u]['d'] + self.G.edge[u][v]['weight']:  # if v.d > u.d + w(u, v)
-            self.G.node[v]['d'] = self.G.node[u]['d'] + self.G.edge[u][v]['weight']  # v.d = u.d + w(u, v)
-            self.G.node[v]['p'] = u  # set u as v's parent
+        return nearest_vertices, dist, paths
 
     def _region_for_latlng(self, R):
         """
         Transforms a region from lat-long system to block IDs
-        :param R: list of co-ordinates [nelat, nelong, swlat, swlong]
+        :param R: list of co-ordinates (nelat, nelong, swlat, swlong)
         :return: region in terms of block IDs in the order - (ne, sw, se, nw) as a tuple
         """
-        ne = self._region_for(R[0], R[1])
-        sw = self._region_for(R[2], R[3])
-        se = self._region_for(R[2], R[1])
-        nw = self._region_for(R[0], R[3])
+        ne = self._region_for(R[0] + 90, R[1] + 180)
+        sw = self._region_for(R[2] + 90, R[3] + 180)
+        se = self._region_for(R[2] + 90, R[1] + 180)
+        nw = self._region_for(R[0] + 90, R[3] + 180)
         return ne, sw, se, nw
 
     def _vertex_lies_in(self, v, R):
         """
         Checks if vertex v lies in region R
         :param v: any vertex in the Graph
-        :param R: list of co-ordinates [nelat, nelong, swlat, swlong]
+        :param R: list of co-ordinates (nelat, nelong, swlat, swlong)
         :return: True if v lies in R, else False
         """
         if 'spatial' in self.G.node[v]:
@@ -175,18 +163,21 @@ class GeoReachPaths:
             return R[2] <= lat <= R[0] and R[3] <= lng <= R[1]
         return False
 
-    def _vertex_reaches(self, u, R):
+    def _vertex_reaches(self, u, R2d, Rid):
         """
         Checks if vertex 'u' can reach region 'R' using GeoReachPaths index
         Region should be anchored at south-west co-ordinate, i.e. origin of the 2D system should be SW point of R
         :param u: vertex whose index entry will be checked for its reachability to R
-        :param R: region in 2D co-ordinates in the order - (ne, sw, se, nw) as a tuple
+        :param R2d: region in 2D co-ordinates in the order - (ne, sw, se, nw) as a tuple
+        :param Rid: block IDs of the region in the order - (ne, sw, se, nw) as a tuple
         :return: True if reachable else False
         """
-        ne, sw, se, nw = R
+        ne, sw, se, nw = R2d
         r = self._DEFAULT_RES
+        if u not in self.index:  # u doesn't reach any spatial vertices
+            return False
         for reg in self.index[u]:
-            p = ((R[1] - reg) / r, (R[1] - reg) % r)
+            p = ((reg - Rid[1]) / r, (reg - Rid[1]) % r)
             if sw[0] <= p[0] <= se[0] and sw[1] <= p[1] <= nw[1]:
                 return True
         return False
