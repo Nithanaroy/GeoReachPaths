@@ -1,4 +1,5 @@
-import time
+import time, heapq
+from itertools import count
 
 import networkx as nx
 from pymongo import MongoClient
@@ -34,6 +35,62 @@ def topk_naive2(G, s, R, K):
         print 'After %ss: Found shortest path from %s to %s' % (time.time() - start, s, b)
     res.sort()
     return res[:K]
+
+
+def topk_naive3(G, source, R, K):
+    """
+    Traverses the graph using Dijkstra's and stops ones K nodes are found in R
+    No spatial index is used
+    :param G: NetworkX Graph instance
+    :param source: Source vertex's ID as a string or number that can be found in G
+    :param R: Region of interest as list of co-ordinates [nelat, nelong, swlat, swlong]
+    :param K: Number of shortest paths to compute
+    :return: Iterator of tuples (distance from s, path from s)
+    """
+    start = time.time()
+    paths = {source: [source]}
+    dist = {}  # dictionary of final distances
+    seen = {source: 0}  # intermediate distances from source
+    c = count()
+    fringe = []  # use heapq with (distance,label) tuples
+    nearest_vertices = []  # vertices that fall in R sorted by distance from source
+    heapq.heappush(fringe, (0, next(c), source))
+    while fringe:
+        (d, _, v) = heapq.heappop(fringe)
+        if v in dist:
+            continue  # already searched this node.
+        dist[v] = d
+
+        if _vertex_lies_in(G, v, R):  # if v lies in the given region R
+            nearest_vertices.append(v)  # collect the vertex
+            if len(nearest_vertices) is K:  # if K vertices are collected
+                break  # stop Dijkstra's
+
+        for u, e in G.succ[v].items():
+            vu_dist = dist[v] + e.get('weight')
+            if u not in seen or vu_dist < seen[u]:
+                seen[u] = vu_dist
+                heapq.heappush(fringe, (vu_dist, next(c), u))
+                if paths is not None:
+                    paths[u] = paths[v] + [u]
+
+    print "After %ss: Found topK" % (time.time() - start,)
+    return nearest_vertices, dist, paths
+
+
+def _vertex_lies_in(G, v, R):
+    """
+    Checks if vertex v lies in region R
+    :param G: NetworkX Graph instance
+    :param v: any vertex in the Graph
+    :param R: list of co-ordinates (nelat, nelong, swlat, swlong)
+    :return: True if v lies in R, else False
+    """
+    if 'spatial' in G.node[v]:
+        lat = G.node[v]['spatial']['lat']
+        lng = G.node[v]['spatial']['lng']
+        return R[2] <= lat <= R[0] and R[3] <= lng <= R[1]
+    return False
 
 
 def topk_naive(G, s, R, K):
@@ -82,14 +139,13 @@ def business_in_loc(nelat, nelong, swlat, swlong):
 
 def main():
     start = time.time()
-    G = construct_gowalla_graph('edges.txt', 'checkins.txt')
+    G = construct_gowalla_graph('./data/edges.txt', './data/checkins.txt')
     # G = pickle.load(open('graph.txt'))
     print "After %ss: Loaded the graph into memory" % (time.time() - start,)
     s = '776'  # user id with most check-ins
     R = [37.6273862693, -122.38735199, 37.6175628388, -122.398681641]
     K = 10
-    res = topk_naive2(G, s, R, K)
-    print res
+    topk_naive3(G, USER_NODE_PREFIX + s, R, K)
 
 
 if __name__ == '__main__':
