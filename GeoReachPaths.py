@@ -182,7 +182,8 @@ class GeoReachPaths:
         if u not in self.index:  # u doesn't reach any spatial vertices
             return False
         for reg in self.index[u]:
-            p = ((reg - Rid[1]) / r, (reg - Rid[1]) % r)
+            # p = ((reg - Rid[1]) / r, (reg - Rid[1]) % r)
+            p = ((reg - Rid[1]) % r, (reg - Rid[1]) / r)
             if sw[0] <= p[0] <= se[0] and sw[1] <= p[1] <= nw[1]:
                 return True
 
