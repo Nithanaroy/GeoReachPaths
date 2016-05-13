@@ -4,7 +4,7 @@ from itertools import count
 import networkx as nx
 from pymongo import MongoClient
 
-from Common import MONGO_URL, USER_NODE_PREFIX, BUSINESS_NODE_PREFIX, construct_gowalla_graph
+from Common import MONGO_URL, USER_NODE_PREFIX, BUSINESS_NODE_PREFIX, construct_graph
 
 
 def topk_naive2(G, s, R, K):
@@ -139,7 +139,19 @@ def business_in_loc(nelat, nelong, swlat, swlong):
 
 def main():
     start = time.time()
-    G = construct_gowalla_graph('./data/edges.txt', './data/checkins.txt')
+    G = construct_graph('./data/yelp/user.txt', './data/yelp/review.txt')
+    s = USER_NODE_PREFIX + '2AGGIi5EiVLM1XhBXaaAVw'  # user id with good social network and a few reviews/check-ins
+    R = (36.5184659897, -114.422607422, 35.7643434797, -115.740966797)  # 21,239 biz present, 0 visited - AZ
+    R = (43.556510375, -88.7585449219, 42.8759641024, -90.0769042969)  # 2,804 biz present, 0 visited - Madison
+    K = 10
+    nn, dist, p = topk_naive3(G, s, R, K)
+    print "After %ss: Completed" % (time.time() - start,)
+    print nn
+
+
+def gowalla_runner():
+    start = time.time()
+    G = construct_graph('./data/edges.txt', './data/checkins.txt')
     # G = pickle.load(open('graph.txt'))
     print "After %ss: Loaded the graph into memory" % (time.time() - start,)
     s = '776'  # user id with most check-ins

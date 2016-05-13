@@ -1,7 +1,9 @@
-import unittest, time
+import unittest
+
 import networkx as nx
+
 from GeoReachPaths import GeoReachPaths
-from Common import construct_gowalla_graph, USER_NODE_PREFIX
+from tests.GeoReachRunners import yelp_runner
 
 
 class TestGeoReachPaths(unittest.TestCase):
@@ -60,6 +62,29 @@ class TestGeoReachPaths(unittest.TestCase):
         G.add_edge('A', 'R1', weight=4.0)
         G.add_edge('B', 'R2', weight=5.0)
         G.add_edge('D', 'R3', weight=3.0)
+        return G
+
+    @staticmethod
+    def graph_fixture3():
+        """
+        Graph from Cormen book on page 659 except the edge from z to s
+        :return: network x directed graph instance
+        """
+        G = nx.DiGraph()
+        G.add_node('s')
+        G.add_node('t', spatial={"lat": 30, "lng": 30})
+        G.add_node('x', spatial={"lat": -30, "lng": 30})
+        G.add_node('y')
+        G.add_node('z')
+        G.add_edge('s', 't', weight=10)
+        G.add_edge('s', 'y', weight=5)
+        G.add_edge('t', 'x', weight=1)
+        G.add_edge('t', 'y', weight=2)
+        G.add_edge('x', 'z', weight=4)
+        G.add_edge('y', 'z', weight=2)
+        G.add_edge('y', 'x', weight=9)
+        G.add_edge('y', 't', weight=3)
+        G.add_edge('z', 'x', weight=6)
         return G
 
     @unittest.skip("ignored for speed")
@@ -124,26 +149,12 @@ class TestGeoReachPaths(unittest.TestCase):
                                    'R2': ['A', 'B', 'R2'], 'D': ['A', 'B', 'C', 'D']}})
         self.assertDictEqual(actual, expected)
 
-
-def runner():
-    start = time.time()
-    G = construct_gowalla_graph('../data/edges.txt', '../data/checkins.txt')
-    print "After %ss: Loaded the graph into memory" % (time.time() - start,)
-    t = GeoReachPaths(G, 2, 2)
-    t.create_index()
-    print "After %ss: Created Index" % (time.time() - start,)
-
-    s = USER_NODE_PREFIX + '776'  # user id with most check-ins
-    # R = (37.6273862693, -122.38735199, 37.6175628388, -122.398681641)  # only 48 biz in this region
-    R = (37.7935076241, -122.279205322, 37.5489326106, -122.515411377)  # 10,685 biz in this region, 0 Visited by s
-    K = 10
-    start = time.time()
-    topk, dist, paths = t.range_reach_paths(s, R, K)
-    taken = time.time() - start
-    # print "K = %s. Time = %ss" % (K, taken)
-    print topk
-
-
-if __name__ == '__main__':
-    # unittest.main()
-    runner()
+        G = self.graph_fixture3()
+        t = GeoReachPaths(G, 2, 2)
+        t.create_index()
+        nn, d, p = t.range_reach_paths('s', (90, 180, -90, 0), 1)
+        print d
+        self.assertDictEqual(dict(d), dict({'y': 5, 's': 0, 'z': 7, 't': 8}))
+        nn, d, p = t.range_reach_paths('s', (90, 180, 0, 0), 1)
+        print d
+        self.assertDictEqual(dict(d), dict({'y': 5, 's': 0, 't': 8}))

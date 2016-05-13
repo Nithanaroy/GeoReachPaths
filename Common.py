@@ -8,7 +8,7 @@ USER_NODE_PREFIX = 'U'  # A prefix string for each user node
 BUSINESS_NODE_PREFIX = 'B'  # prefix string for each spatial/business node
 
 
-def construct_gowalla_graph(social_edges, spatial_edges, output_path=None):
+def construct_graph(social_edges, spatial_edges, output_path=None):
     """
     create a NetworkX graph save to disk
     uses pickle to save to disk if output path is provided

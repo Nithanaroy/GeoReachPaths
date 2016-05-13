@@ -35,9 +35,8 @@ class GeoReachPaths:
         # Add 1 hop reachability for a DAG
         for v in G.nodes():  # for each component
             for w in G.node[v]['members']:  # for each node in the component
-                for u in self.G[w].keys():  # for each vertex in G.Adj(v)
-                    if 'spatial' in self.G.node[u]:  # is 'u' a spatial node?
-                        index.upsert(v, {self.region(u)})  # if yes, add block # of 'u' to v's meta
+                if 'spatial' in self.G.node[w]:  # is 'w' a spatial node?
+                    index.upsert(v, {self.region(w)})  # if yes, add block # of 'w' to v's meta
 
         # Add multi hop reachability
         self._do_dfs(G, index)
@@ -127,14 +126,20 @@ class GeoReachPaths:
                 if len(nearest_vertices) == K:  # if K vertices are collected
                     break  # stop Dijkstra's
 
-            if self._vertex_reaches(v, R2d, Rid):  # if v reaches the given region R
-                for u, e in self.G.succ[v].items():
-                    vu_dist = dist[v] + e.get('weight')
-                    if u not in seen or vu_dist < seen[u]:
-                        seen[u] = vu_dist
-                        heapq.heappush(fringe, (vu_dist, next(c), u))
-                        if paths is not None:
-                            paths[u] = paths[v] + [u]
+            for u, e in self.G.succ[v].items():
+                if u not in seen:
+                    if not self._vertex_reaches(u, R2d, Rid):  # if u does not reach the given region R
+                        seen[u] = -1  # mark u as unreachable to R
+                        continue
+                elif seen[u] == -1:  # if u is not reachable to R
+                    continue
+
+                vu_dist = dist[v] + e.get('weight')
+                if u not in seen or vu_dist < seen[u]:
+                    seen[u] = vu_dist
+                    heapq.heappush(fringe, (vu_dist, next(c), u))
+                    if paths is not None:
+                        paths[u] = paths[v] + [u]
 
         return nearest_vertices, dist, paths
 
@@ -180,6 +185,7 @@ class GeoReachPaths:
             p = ((reg - Rid[1]) / r, (reg - Rid[1]) % r)
             if sw[0] <= p[0] <= se[0] and sw[1] <= p[1] <= nw[1]:
                 return True
+
         return False
 
     def _dim_promotion(self, R, o=None):
