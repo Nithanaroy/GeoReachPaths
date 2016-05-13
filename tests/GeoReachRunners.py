@@ -34,12 +34,11 @@ def yelp_runner():
     s = USER_NODE_PREFIX + '2AGGIi5EiVLM1XhBXaaAVw'  # user id with good social network and a few reviews/check-ins
     R = (36.5184659897, -114.422607422, 35.7643434797, -115.740966797)  # 21,239 biz present, 0 visited - AZ
     R = (43.556510375, -88.7585449219, 42.8759641024, -90.0769042969)  # 2,804 biz present, 0 visited - Madison
-    K = 10
-    start = time.time()
-    topk, dist, paths = t.range_reach_paths(s, R, K)
-    taken = time.time() - start
-    print "K = %s. Time = %ss" % (K, taken)
-    print topk
+    for K in [10, 20, 40, 80, 160, 320, 640, 1280]:
+        start = time.time()
+        topk, dist, paths = t.range_reach_paths(s, R, K)
+        print "K = %s. Time = %ss" % (K, time.time() - start)
+        # print topk
 
 
 if __name__ == '__main__':
