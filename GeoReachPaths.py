@@ -55,7 +55,18 @@ class GeoReachPaths:
                     pass  # ignore if index entry is not found as they don't have any spatial connections
 
     def create_social_index(self):
-        self._betweeness_landmarks()
+        # self._betweeness_landmarks()
+        self._top_social_landmarks()
+
+    def _top_social_landmarks(self):
+        """
+        Landmarks selected by maximum number of friends
+        :return: sets the social_index dictionary
+        """
+        Gp = self._extract_social_graph(self.G)
+        probable_landmarks = sorted(map(lambda n: (n, len(Gp.succ[n])), Gp.nodes()), key=operator.itemgetter(1),
+                                    reverse=True)
+        self._pick_landmarks(Gp, probable_landmarks)
 
     def _betweeness_landmarks(self):
         """
@@ -66,22 +77,42 @@ class GeoReachPaths:
           landmark_node2: {node3: d(node3, landmark_node2), node2: d(.)...}...
         }
         """
-        Gp = self.G.copy()
-        for n in Gp.nodes():
-            if 'spatial' in Gp.node[n]:
-                Gp.remove_node(n)
+        Gp = self._extract_social_graph(self.G)
         probable_landmarks = sorted(nx.betweenness_centrality(Gp, normalized=False).items(),
                                     key=operator.itemgetter(1), reverse=True)
-        nodes = set(self._filter_social_nodes(self.G.nodes()))  # all social nodes
-        known_nodes = {}
+        self._pick_landmarks(Gp, probable_landmarks)
+
+    def _pick_landmarks(self, G, probable_landmarks):
+        """
+        Pick minimum number of landmarks from probable landmarks such that entire graph is reachable from the
+        set of these landmarks
+        :param G: NetworkX Graph instance
+        :param probable_landmarks: ranked list of nodes with the best landmark in the beginning. ((node, importance value), ...)
+        :return: a subset of probable landmarks such that entire graph is reachable
+        """
+        nodes = set(G.nodes())  # all social nodes
+        known_nodes = set()
         for l, _ in probable_landmarks:
-            index_for_l = nx.single_source_dijkstra(self.G, l)
-            nodes_from_l = set(self._filter_social_nodes(index_for_l.keys()))
+            index_for_l, _ = nx.single_source_dijkstra(G, l)
+            nodes_from_l = set(index_for_l.keys())
             if len(nodes_from_l - known_nodes) > 0:  # discovered new social nodes?
                 self.social_index[l] = index_for_l  # create an index entry
                 known_nodes = known_nodes.union(nodes_from_l)  # add them to known territory
             if len(nodes - known_nodes) == 0:  # discovered all social nodes?
                 break
+
+    @staticmethod
+    def _extract_social_graph(G):
+        """
+        Creates a new graph from given graph containing only the social (or non-spatial) nodes
+        :param G: NetworkX Graph instance
+        :return: NetworkX Graph instance
+        """
+        Gp = G.copy()
+        for n in Gp.nodes():
+            if 'spatial' in Gp.node[n]:
+                Gp.remove_node(n)
+        return Gp
 
     def _filter_social_nodes(self, nodes):
         return filter(lambda n: 'spatial' not in self.G.node[n], nodes)
