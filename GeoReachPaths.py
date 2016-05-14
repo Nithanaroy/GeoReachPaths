@@ -1,4 +1,4 @@
-import math, heapq
+import math, heapq, operator, time
 from itertools import count
 import networkx as nx
 from Common import extend_dictionary
@@ -23,15 +23,21 @@ class GeoReachPaths:
         extend_dictionary()  # adds upsert method to dict class
 
         self.index = dict()  # geo reach index. key = vertex. value = a set of reachable regions
+        self.social_index = dict()
         self.G = G
         self.RF = RF
         self.M = M
         self.available_res = [GeoReachPaths._DEFAULT_RES]
 
     def create_index(self):
+        self.create_social_index()
+        self.create_spatial_index()
+
+        return self.index
+
+    def create_spatial_index(self):
         G = nx.condensation(self.G)  # convert to DAG
         index = dict()
-
         # Add 1 hop reachability for a DAG
         for v in G.nodes():  # for each component
             for w in G.node[v]['members']:  # for each node in the component
@@ -40,7 +46,6 @@ class GeoReachPaths:
 
         # Add multi hop reachability
         self._do_dfs(G, index)
-
         # Update reachability information to each node in the component
         for v in G.nodes():  # for each component
             for w in G.node[v]['members']:  # for each node in the component
@@ -49,7 +54,37 @@ class GeoReachPaths:
                 except KeyError:
                     pass  # ignore if index entry is not found as they don't have any spatial connections
 
-        return self.index
+    def create_social_index(self):
+        self._betweeness_landmarks()
+
+    def _betweeness_landmarks(self):
+        """
+        Select minimum landmarks using betweeness centrality for social nodes
+        Sets the self.social_index instance variable:
+        {
+          landmark_node1: {node1: d(node1, landmark_node1), node2: d(.)...},
+          landmark_node2: {node3: d(node3, landmark_node2), node2: d(.)...}...
+        }
+        """
+        Gp = self.G.copy()
+        for n in Gp.nodes():
+            if 'spatial' in Gp.node[n]:
+                Gp.remove_node(n)
+        probable_landmarks = sorted(nx.betweenness_centrality(Gp, normalized=False).items(),
+                                    key=operator.itemgetter(1), reverse=True)
+        nodes = set(self._filter_social_nodes(self.G.nodes()))  # all social nodes
+        known_nodes = {}
+        for l, _ in probable_landmarks:
+            index_for_l = nx.single_source_dijkstra(self.G, l)
+            nodes_from_l = set(self._filter_social_nodes(index_for_l.keys()))
+            if len(nodes_from_l - known_nodes) > 0:  # discovered new social nodes?
+                self.social_index[l] = index_for_l  # create an index entry
+                known_nodes = known_nodes.union(nodes_from_l)  # add them to known territory
+            if len(nodes - known_nodes) == 0:  # discovered all social nodes?
+                break
+
+    def _filter_social_nodes(self, nodes):
+        return filter(lambda n: 'spatial' not in self.G.node[n], nodes)
 
     def _do_dfs(self, G, index):
         """
