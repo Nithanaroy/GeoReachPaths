@@ -22,7 +22,7 @@ class GeoReachPaths:
         """
         extend_dictionary()  # adds upsert method to dict class
 
-        self.index = dict()  # geo reach index. key = vertex. value = a set of reachable regions
+        self.spatial_index = dict()  # geo reach index. key = vertex. value = a set of reachable regions
         self.social_index = dict()
         self.G = G
         self.RF = RF
@@ -30,12 +30,12 @@ class GeoReachPaths:
         self.available_res = [GeoReachPaths._DEFAULT_RES]
 
     def create_index(self):
-        self.create_social_index()
-        self.create_spatial_index()
+        self._create_spatial_index()
+        self._create_social_index()
 
-        return self.index
+        return self.spatial_index, self.social_index
 
-    def create_spatial_index(self):
+    def _create_spatial_index(self):
         G = nx.condensation(self.G)  # convert to DAG
         index = dict()
         # Add 1 hop reachability for a DAG
@@ -50,13 +50,39 @@ class GeoReachPaths:
         for v in G.nodes():  # for each component
             for w in G.node[v]['members']:  # for each node in the component
                 try:
-                    self.index[w] = index[v]  # set component's index entry to each vertex in it
+                    self.spatial_index[w] = index[v]  # set component's index entry to each vertex in it
                 except KeyError:
                     pass  # ignore if index entry is not found as they don't have any spatial connections
 
-    def create_social_index(self):
+    def _create_social_index(self):
         # self._betweeness_landmarks()
-        self._top_social_landmarks()
+        # self._top_social_landmarks()
+        self._top_reachable_landmarks()
+
+    def _top_reachable_landmarks(self):
+        """
+        Landmarks that are selected using the rechability index
+        This function assumes that spatial index exists which has rechability information for each vertex
+        :return: sets the social_index dictionary
+        """
+        r = self._DEFAULT_RES
+        possible_regions = set(range(0, r ** 2))
+        landmarks = []
+        condition = True
+        while condition:
+            max_coverage = set()
+            current_central_v = None
+            for v in self.spatial_index:
+                covered_areas = possible_regions & self.spatial_index[v]
+                if len(max_coverage) < len(covered_areas):
+                    max_coverage = covered_areas
+                    current_central_v = v
+            possible_regions -= max_coverage
+            condition = len(max_coverage) > 0
+            if condition:
+                landmarks.append(current_central_v)
+
+        self.social_index = {l: nx.single_source_dijkstra_path_length(self.G, l) for l in landmarks}
 
     def _top_social_landmarks(self):
         """
@@ -93,7 +119,7 @@ class GeoReachPaths:
         nodes = set(G.nodes())  # all social nodes
         known_nodes = set()
         for l, _ in probable_landmarks:
-            index_for_l, _ = nx.single_source_dijkstra(G, l)
+            index_for_l = nx.nx.single_source_dijkstra_path_length(G, l)
             nodes_from_l = set(index_for_l.keys())
             if len(nodes_from_l - known_nodes) > 0:  # discovered new social nodes?
                 self.social_index[l] = index_for_l  # create an index entry
@@ -245,9 +271,9 @@ class GeoReachPaths:
         """
         ne, sw, se, nw = R2d
         r = self._DEFAULT_RES
-        if u not in self.index:  # u doesn't reach any spatial vertices
+        if u not in self.spatial_index:  # u doesn't reach any spatial vertices
             return False
-        for reg in self.index[u]:
+        for reg in self.spatial_index[u]:
             # p = ((reg - Rid[1]) / r, (reg - Rid[1]) % r)
             p = ((reg - Rid[1]) % r, (reg - Rid[1]) / r)
             if sw[0] <= p[0] <= se[0] and sw[1] <= p[1] <= nw[1]:
