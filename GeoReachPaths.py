@@ -352,7 +352,7 @@ class GeoReachPaths:
         vs = map(lambda x: x.object, self.region_index.intersection((R[3], R[2], R[1], R[0]), objects=True))
         orderings = {}
         for l in self.social_index:
-            orderings[l] = sorted(vs, lambda a, b: self.social_index[l][a] - self.social_index[l][b])
+            orderings[l] = sorted(vs, key=lambda i: self.social_index[l].get(i, float('inf')))
         return orderings
 
     def _region_for_latlng(self, R):
