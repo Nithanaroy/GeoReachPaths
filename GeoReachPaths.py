@@ -1,7 +1,8 @@
-import math, heapq, operator, time
+import math, heapq, operator, gc
 from itertools import count
 import networkx as nx
 from Common import extend_dictionary
+from rtree import index
 
 
 class GeoReachPaths:
@@ -24,6 +25,7 @@ class GeoReachPaths:
 
         self.spatial_index = dict()  # geo reach index. key = vertex. value = a set of reachable regions
         self.social_index = dict()
+        self.region_index = index.Index()  # rtree
         self.G = G
         self.RF = RF
         self.M = M
@@ -53,6 +55,19 @@ class GeoReachPaths:
                     self.spatial_index[w] = index[v]  # set component's index entry to each vertex in it
                 except KeyError:
                     pass  # ignore if index entry is not found as they don't have any spatial connections
+
+        # free up space
+        G = None
+        index = None
+        gc.collect(0)
+
+        # Create region based index
+        c = count()
+        for v in self.G.nodes():
+            if 'spatial' in self.G.node[v]:
+                x = self.G.node[v]['spatial']['lng']
+                y = self.G.node[v]['spatial']['lat']
+                self.region_index.insert(next(c), (x, y, x, y), v)
 
     def _create_social_index(self):
         # self._betweeness_landmarks()
@@ -234,6 +249,111 @@ class GeoReachPaths:
                         paths[u] = paths[v] + [u]
 
         return nearest_vertices, dist, paths
+
+    def astar_path(self, source, R, K):
+        orderings = self._hueristic_preprocess(R)
+        paths = []
+        nearest_vertices = set()
+        Rid = self._region_for_latlng(R)  # region in terms of block IDs
+        R2d = self._dim_promotion(Rid)  # region in 2D co-ordinate system with SW point as (0, 0)
+        unreachable_nodes = {}
+
+        for k in range(0, K):
+            c = count()
+            queue = [(0, next(c), source, 0, None)]
+
+            # Maps enqueued nodes to distance of discovered paths and the
+            # computed heuristics to target. We avoid computing the heuristics
+            # more than once and inserting the node into the queue too many times.
+            enqueued = {}
+            # Maps explored nodes to parent closest to the source.
+            explored = {}
+
+            while queue:
+                # Pop the smallest item from queue.
+                _, __, curnode, dist, parent = heapq.heappop(queue)
+
+                if curnode not in nearest_vertices and self._vertex_lies_in(curnode, R):
+                    nearest_vertices.add(curnode)
+                    paths.append(self._fetch_path(curnode, explored, parent))
+                    break
+
+                if curnode in explored:
+                    continue
+
+                explored[curnode] = parent
+
+                for neighbor, w in self.G[curnode].items():
+                    if neighbor not in unreachable_nodes:
+                        if not self._vertex_reaches(neighbor, R2d, Rid):  # if u does not reach the given region R
+                            unreachable_nodes[neighbor] = True  # mark u as unreachable to R
+                            continue
+                        else:
+                            unreachable_nodes[neighbor] = False
+                    elif unreachable_nodes[neighbor]:  # if u is not reachable to R
+                        continue
+
+                    # "or neighbor in nearest_vertices" add this optimization if spatial nodes are disconnected
+                    # else leave it to be a generic implementation
+                    if neighbor in explored:
+                        continue
+
+                    ncost = dist + w.get('weight')
+                    if neighbor in enqueued:
+                        qcost, h = enqueued[neighbor]
+                        # if qcost < ncost, a longer path to neighbor remains
+                        # enqueued. Removing it would need to filter the whole
+                        # queue, it's better just to leave it there and ignore
+                        # it when we visit the node a second time.
+                        if qcost <= ncost:
+                            continue
+                    else:
+                        h = self._heuristic(neighbor, orderings, k)
+                    enqueued[neighbor] = ncost, h
+                    heapq.heappush(queue, (ncost + h, next(c), neighbor, ncost, curnode))
+
+        return paths
+
+    @staticmethod
+    def _fetch_path(v, explored, parent):
+        """
+        Fetches path for v
+        :param v: vertex for which path has to be found
+        :param explored: explored map from A* algorithm
+        :param parent: parent to v
+        :return: a list of nodes in the path
+        """
+        path = [v]
+        node = parent
+        while node is not None:
+            path.insert(0, node)
+            node = explored[node]
+        return path
+
+    def _heuristic(self, v, orderings, k):
+        """
+        Return the Kth best heuristic from v to R
+        :param v: vertex for whom heuristic is required
+        :param orderings: pre computed heuristic distances from landmarks to vertices in R
+        :param k: Kth best heuristic
+        :return: heuristic distance
+        """
+        # if not self._vertex_reaches(v, R2d, Rid):
+        #     return float('inf')
+        best = 0  # either v is the landmark which falls in R or we do not know the heuristic for v
+        for l in self.social_index:
+            if v in self.social_index[l] and orderings[l][k] in self.social_index[l]:
+                h = abs(self.social_index[l][v] - self.social_index[l][orderings[l][k]])
+                if h > best:
+                    best = h
+        return best
+
+    def _hueristic_preprocess(self, R):
+        vs = map(lambda x: x.object, self.region_index.intersection((R[3], R[2], R[1], R[0]), objects=True))
+        orderings = {}
+        for l in self.social_index:
+            orderings[l] = sorted(vs, lambda a, b: self.social_index[l][a] - self.social_index[l][b])
+        return orderings
 
     def _region_for_latlng(self, R):
         """
