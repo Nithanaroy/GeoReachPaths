@@ -32,7 +32,7 @@ def topk_naive2(G, s, R, K):
         except KeyError:
             # This business is not reachable from s
             res.append((float("inf"), [], b))
-        print 'After %ss: Found shortest path from %s to %s' % (time.time() - start, s, b)
+            # print 'After %ss: Found shortest path from %s to %s' % (time.time() - start, s, b)
     res.sort()
     return res[:K]
 
@@ -131,8 +131,9 @@ def business_in_loc(nelat, nelong, swlat, swlong):
     :param swlong: Longitude of the southwest coordinate
     :return: a list of unique business IDs
     """
-    with MongoClient(MONGO_URL) as connection:
-        db = connection.gowalladata
+    with MongoClient() as connection:
+        # db = connection.gowalladata
+        db = connection.yelpdata
         query = {"loc": {"$geoWithin": {"$box": [[swlong, swlat], [nelong, nelat]]}}}
         return [b['_id'] for b in db.business.find(query)]
 

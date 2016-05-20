@@ -141,3 +141,5 @@ ENV/
 .idea/
 data/
 .DS_Store
+*.csv
+*.out

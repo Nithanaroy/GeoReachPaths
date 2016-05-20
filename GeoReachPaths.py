@@ -257,63 +257,65 @@ class GeoReachPaths:
         Rid = self._region_for_latlng(R)  # region in terms of block IDs
         R2d = self._dim_promotion(Rid)  # region in 2D co-ordinate system with SW point as (0, 0)
         unreachable_nodes = {}
+        k = 0
 
-        for k in range(0, K):
-            c = count()
-            queue = [(0, next(c), source, 0, None)]
+        c = count()
+        queue = [(0, next(c), source, 0, None)]
 
-            # Maps enqueued nodes to distance of discovered paths and the
-            # computed heuristics to target. We avoid computing the heuristics
-            # more than once and inserting the node into the queue too many times.
-            enqueued = {}
-            # Maps explored nodes to parent closest to the source.
-            explored = {}
+        # Maps enqueued nodes to distance of discovered paths and the
+        # computed heuristics to target. We avoid computing the heuristics
+        # more than once and inserting the node into the queue too many times.
+        enqueued = {}
+        # Maps explored nodes to parent closest to the source.
+        explored = {}
 
-            while queue:
-                # Pop the smallest item from queue.
-                _, __, curnode, dist, parent = heapq.heappop(queue)
+        while queue:
+            # Pop the smallest item from queue.
+            _, __, curnode, dist, parent = heapq.heappop(queue)
 
-                if curnode not in nearest_vertices and self._vertex_lies_in(curnode, R):
-                    nearest_vertices.add(curnode)
-                    paths.append(self._fetch_path(curnode, explored, parent))
+            if curnode not in nearest_vertices and self._vertex_lies_in(curnode, R):
+                nearest_vertices.add(curnode)
+                paths.append(self._fetch_path(curnode, explored, parent))
+                k += 1
+                if k == K:
                     break
 
-                # handles back edges
-                if curnode in explored:
+            # handles back edges
+            if curnode in explored:
+                continue
+
+            explored[curnode] = parent
+
+            for neighbor, w in self.G[curnode].items():
+                if neighbor not in unreachable_nodes:
+                    if not self._vertex_reaches(neighbor, R2d, Rid):  # if u does not reach the given region R
+                        unreachable_nodes[neighbor] = True  # mark u as unreachable to R
+                        continue
+                    else:
+                        unreachable_nodes[neighbor] = False
+                elif unreachable_nodes[neighbor]:  # if u is not reachable to R
                     continue
 
-                explored[curnode] = parent
+                # "or neighbor in nearest_vertices" add this optimization if spatial nodes are disconnected
+                # else leave it to be a generic implementation
+                if neighbor in explored:
+                    continue
 
-                for neighbor, w in self.G[curnode].items():
-                    if neighbor not in unreachable_nodes:
-                        if not self._vertex_reaches(neighbor, R2d, Rid):  # if u does not reach the given region R
-                            unreachable_nodes[neighbor] = True  # mark u as unreachable to R
-                            continue
-                        else:
-                            unreachable_nodes[neighbor] = False
-                    elif unreachable_nodes[neighbor]:  # if u is not reachable to R
+                ncost = dist + w.get('weight')
+                if neighbor in enqueued:
+                    qcost, h = enqueued[neighbor]
+                    # if qcost < ncost, a longer path to neighbor remains
+                    # enqueued. Removing it would need to filter the whole
+                    # queue, it's better just to leave it there and ignore
+                    # it when we visit the node a second time.
+                    if qcost <= ncost:
                         continue
+                else:
+                    h = self._heuristic(neighbor, orderings, k)
+                enqueued[neighbor] = ncost, h
+                heapq.heappush(queue, (ncost + h, next(c), neighbor, ncost, curnode))
 
-                    # "or neighbor in nearest_vertices" add this optimization if spatial nodes are disconnected
-                    # else leave it to be a generic implementation
-                    if neighbor in explored:
-                        continue
-
-                    ncost = dist + w.get('weight')
-                    if neighbor in enqueued:
-                        qcost, h = enqueued[neighbor]
-                        # if qcost < ncost, a longer path to neighbor remains
-                        # enqueued. Removing it would need to filter the whole
-                        # queue, it's better just to leave it there and ignore
-                        # it when we visit the node a second time.
-                        if qcost <= ncost:
-                            continue
-                    else:
-                        h = self._heuristic(neighbor, orderings, k)
-                    enqueued[neighbor] = ncost, h
-                    heapq.heappush(queue, (ncost + h, next(c), neighbor, ncost, curnode))
-
-        return paths
+        return len(explored), paths
 
     @staticmethod
     def _fetch_path(v, explored, parent):
