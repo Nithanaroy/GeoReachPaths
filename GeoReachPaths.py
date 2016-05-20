@@ -278,6 +278,7 @@ class GeoReachPaths:
                     paths.append(self._fetch_path(curnode, explored, parent))
                     break
 
+                # handles back edges
                 if curnode in explored:
                     continue
 
@@ -343,7 +344,7 @@ class GeoReachPaths:
         best = 0  # either v is the landmark which falls in R or we do not know the heuristic for v
         for l in self.social_index:
             if v in self.social_index[l] and orderings[l][k] in self.social_index[l]:
-                h = abs(self.social_index[l][v] - self.social_index[l][orderings[l][k]])
+                h = self.social_index[l][orderings[l][k]] - self.social_index[l][v]
                 if h > best:
                     best = h
         return best
