@@ -3,7 +3,6 @@ import unittest
 import networkx as nx
 
 from GeoReachPaths import GeoReachPaths
-from tests.GeoReachRunners import yelp_runner
 
 
 class TestGeoReachPaths(unittest.TestCase):
@@ -113,6 +112,7 @@ class TestGeoReachPaths(unittest.TestCase):
         self.assertEqual(t.region('E'), 90, 'incorrect E')
         # print 'Region Test Passed'
 
+    @unittest.skip("ignored for speed")
     def test_range_reach(self):
         """
         Uses graph with a cycle to check for the simplest case
@@ -158,3 +158,10 @@ class TestGeoReachPaths(unittest.TestCase):
         nn, d, p = t.range_reach_paths('s', (90, 180, 0, 0), 1)
         print d
         self.assertDictEqual(dict(d), dict({'y': 5, 's': 0, 't': 8}))
+
+    def test_social_index(self):
+        G = self.graph_fixture3()
+        t = GeoReachPaths(G, 2, 2)
+        t.create_index()
+        p = t.astar_path('s', (90, 180, -90, 0), 2)
+        print p
