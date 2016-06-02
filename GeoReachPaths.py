@@ -10,7 +10,7 @@ class GeoReachPaths:
     _MAX_LAT = 90
     _MIN_LNG = -180
     _MAX_LNG = 180
-    _DEFAULT_RES = 10
+    _DEFAULT_RES = 1000
 
     def __init__(self, G, RF, M):
         """
@@ -32,6 +32,9 @@ class GeoReachPaths:
         self.available_res = [GeoReachPaths._DEFAULT_RES]
 
     def create_index(self):
+        self.spatial_index = dict()  # geo reach index. key = vertex. value = a set of reachable regions
+        self.social_index = dict()
+        self.region_index = index.Index()  # rtree
         self._create_spatial_index()
         self._create_social_index()
 
@@ -250,7 +253,15 @@ class GeoReachPaths:
 
         return nearest_vertices, dist, paths
 
-    def astar_path(self, source, R, K):
+    def astar_path(self, source, R, K, only_social=False):
+        """
+        Finds K shortest paths from source to R using A* with landmark algorithm
+        :param source: source vertex
+        :param R: region
+        :param K: K in top-K
+        :param only_social: flag to indicate whether to use both social and spatial or only social
+        :return: explored nodes and their parents, paths
+        """
         orderings = self._hueristic_preprocess(R)
         paths = []
         nearest_vertices = set()
@@ -287,14 +298,15 @@ class GeoReachPaths:
             explored[curnode] = parent
 
             for neighbor, w in self.G[curnode].items():
-                if neighbor not in unreachable_nodes:
-                    if not self._vertex_reaches(neighbor, R2d, Rid):  # if u does not reach the given region R
-                        unreachable_nodes[neighbor] = True  # mark u as unreachable to R
+                if not only_social:
+                    if neighbor not in unreachable_nodes:
+                        if not self._vertex_reaches(neighbor, R2d, Rid):  # if u does not reach the given region R
+                            unreachable_nodes[neighbor] = True  # mark u as unreachable to R
+                            continue
+                        else:
+                            unreachable_nodes[neighbor] = False
+                    elif unreachable_nodes[neighbor]:  # if u is not reachable to R
                         continue
-                    else:
-                        unreachable_nodes[neighbor] = False
-                elif unreachable_nodes[neighbor]:  # if u is not reachable to R
-                    continue
 
                 # "or neighbor in nearest_vertices" add this optimization if spatial nodes are disconnected
                 # else leave it to be a generic implementation
@@ -315,7 +327,7 @@ class GeoReachPaths:
                 enqueued[neighbor] = ncost, h
                 heapq.heappush(queue, (ncost + h, next(c), neighbor, ncost, curnode))
 
-        return len(explored), paths
+        return explored, paths
 
     @staticmethod
     def _fetch_path(v, explored, parent):

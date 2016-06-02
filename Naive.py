@@ -18,10 +18,10 @@ def topk_naive2(G, s, R, K):
     :param K: Number of shortest paths to compute
     :return: Iterator of tuples (distance from s, path from s)
     """
-    start = time.time()
-    print '\nStarted Algorithm at %s' % (start,)
+    # start = time.time()
+    # print '\nStarted Algorithm at %s' % (start,)
     biz = business_in_loc(R[0], R[1], R[2], R[3])
-    print 'After %ss: Found %s businesses in the region %s' % (time.time() - start, len(biz), R)
+    # print 'After %ss: Found %s businesses in the region %s' % (time.time() - start, len(biz), R)
     s = USER_NODE_PREFIX + s
     length, path = nx.single_source_dijkstra(G, s)
     res = []
