@@ -265,8 +265,9 @@ class GeoReachPaths:
         orderings = self._hueristic_preprocess(R)
         paths = []
         nearest_vertices = set()
-        Rid = self._region_for_latlng(R)  # region in terms of block IDs
-        R2d = self._dim_promotion(Rid)  # region in 2D co-ordinate system with SW point as (0, 0)
+        # Rid = self._region_for_latlng(R)  # region in terms of block IDs
+        # R2d = self._dim_promotion(Rid)  # region in 2D co-ordinate system with SW point as (0, 0)
+        Rids = self._region_block_ids(R)
         unreachable_nodes = {}
         k = 0
 
@@ -300,7 +301,9 @@ class GeoReachPaths:
             for neighbor, w in self.G[curnode].items():
                 if not only_social:
                     if neighbor not in unreachable_nodes:
-                        if not self._vertex_reaches(neighbor, R2d, Rid):  # if u does not reach the given region R
+                        # if not self._vertex_reaches(neighbor, R2d, Rid):  # if u does not reach the given region R
+                        # if not self._vertex_reaches2(neighbor, Rids):  # if u does not reach the given region R
+                        if not self._vertex_reaches3(neighbor, Rids):  # if u does not reach the given region R
                             unreachable_nodes[neighbor] = True  # mark u as unreachable to R
                             continue
                         else:
@@ -370,6 +373,19 @@ class GeoReachPaths:
             orderings[l] = sorted(vs, key=lambda i: self.social_index[l].get(i, float('inf')))
         return orderings
 
+    def _region_block_ids(self, R):
+        """
+        Returns the list of all block IDs that make up R in ascending order
+        :param R: list of co-ordinates (nelat, nelong, swlat, swlong)
+        :return: an iterator of block ids
+        """
+        ne, sw, se, nw = self._region_for_latlng(R)
+        res = self._DEFAULT_RES
+        ids = []
+        for r in range(sw, nw + 1, res):
+            ids += list(range(r, r + (se - sw) + 1))
+        return set(ids)
+
     def _region_for_latlng(self, R):
         """
         Transforms a region from lat-long system to block IDs
@@ -415,6 +431,31 @@ class GeoReachPaths:
                 return True
 
         return False
+
+    def _vertex_reaches2(self, u, R):
+        """
+        Checks if u can reach R using spatial index
+        :param u: vertex
+        :param R: region as an iterable of block IDs
+        :return: True if u can reach R, else False
+        """
+        if u not in self.spatial_index:  # u doesn't reach any spatial vertices
+            return False
+        for id in R:
+            if id in self.spatial_index[u]:
+                return True
+        return False
+
+    def _vertex_reaches3(self, u, R):
+        """
+        Checks if u can reach R using spatial index
+        :param u: vertex
+        :param R: region as an iterable of block IDs
+        :return: True if u can reach R, else False
+        """
+        if u not in self.spatial_index:  # u doesn't reach any spatial vertices
+            return False
+        return len(self.spatial_index[u] & R) > 0
 
     def _dim_promotion(self, R, o=None):
         """

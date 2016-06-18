@@ -159,9 +159,20 @@ class TestGeoReachPaths(unittest.TestCase):
         print d
         self.assertDictEqual(dict(d), dict({'y': 5, 's': 0, 't': 8}))
 
+    @unittest.skip("ignored for speed")
     def test_social_index(self):
         G = self.graph_fixture3()
         t = GeoReachPaths(G, 2, 2)
         t.create_index()
         p = t.astar_path('s', (90, 180, -90, 0), 2)
         print p
+
+    def test_region_ids(self):
+        """
+        Check if a given region is correctly transformed to block IDs
+        """
+        R = (60, 37, 19, -40)
+        G = nx.DiGraph()
+        t = GeoReachPaths(G, 2, 2)
+        GeoReachPaths._DEFAULT_RES = 10
+        self.assertEquals([63, 64, 65, 66, 73, 74, 75, 76, 83, 84, 85, 86], t._region_block_ids(R))
