@@ -4,7 +4,7 @@ from itertools import count
 import networkx as nx
 from pymongo import MongoClient
 
-from Common import MONGO_URL, USER_NODE_PREFIX, BUSINESS_NODE_PREFIX, construct_graph
+from Common import MONGO_URL, USER_NODE_PREFIX, BUSINESS_NODE_PREFIX, construct_graph, path_length
 
 
 def topk_naive2(G, s, R, K):
@@ -22,7 +22,6 @@ def topk_naive2(G, s, R, K):
     # print '\nStarted Algorithm at %s' % (start,)
     biz = business_in_loc(R[0], R[1], R[2], R[3])
     # print 'After %ss: Found %s businesses in the region %s' % (time.time() - start, len(biz), R)
-    s = USER_NODE_PREFIX + s
     length, path = nx.single_source_dijkstra(G, s)
     res = []
     for b in biz:
@@ -91,6 +90,81 @@ def _vertex_lies_in(G, v, R):
         lng = G.node[v]['spatial']['lng']
         return R[2] <= lat <= R[0] and R[3] <= lng <= R[1]
     return False
+
+
+class TopKNaive4:
+    """
+    Uses A* with landmark to find the shortest paths between s and all vertices in R
+    Then picks the top-k from them
+    """
+
+    def __init__(self, G, resolution):
+        """
+        Constructor
+        :param G: NetworkX directed graph instance
+        :param resolution: resolution used in the spatial index - GeoReachPaths
+        """
+        self.G = G
+        self.resolution = resolution
+        self.index = self._landmark_index()
+
+    def run(self, s, R, K):
+        """
+        Uses A* with landmark to find the shortest paths between s and all vertices in R
+        Then picks the top-k from them
+        Requires MongoDB to perform spatial range query for R
+        :param G: NetworkX directed graph instance
+        :param s: source vertex
+        :param R: Region of interest as list of co-ordinates [nelat, nelong, swlat, swlong]
+        :param K: Number of shortest paths to compute
+        :return: Iterator of tuples (distance from s, path from s)
+        """
+        biz = business_in_loc(R[0], R[1], R[2], R[3])
+        res = []
+        for b in biz:
+            b = BUSINESS_NODE_PREFIX + b
+            try:
+                path = nx.astar_path(self.G, s, b, self._heuristic)
+                res.append((path_length(self.G, path), path, b))
+            except nx.NetworkXNoPath:
+                res.append((float("inf"), [], b))  # This business is not reachable from s
+        res.sort()
+        return res[:K]
+
+    def _landmark_index(self):
+        """
+        Uses any of the landmark selection algorithms and returns a list of landmarks and the shortest paths to all of its
+        reachable vertices
+        :return: {landmark1: {v1: 5, v2: 10, ...}, landmark2: {v1: 4, v2: 15}}
+        """
+        landmarks = self._pick_landmarks(self.resolution)
+        return {l: nx.single_source_dijkstra_path_length(self.G, l) for l in landmarks}
+
+    @staticmethod
+    def _pick_landmarks(resolution):
+        """
+        Uses any of the landmark selection algorithms and returns a list of landmarks
+        :param resolution: resolution used in spatial index
+        :return: [landmark1, landmark2]
+        """
+        landmarks = {5: ["Umng_wOkmTMboTVon340-xw"], 25: ["Umng_wOkmTMboTVon340-xw"], 125: ["Umng_wOkmTMboTVon340-xw"],
+                     625: ["Umng_wOkmTMboTVon340-xw"],
+                     3125: ['Umng_wOkmTMboTVon340-xw', 'UVcnb1imy3F_zNXkIA4tsvg', 'BQkttdZaXAt5csTYffJvVfg',
+                            'UTyjPzE9tphy-m_khJe8SrQ', 'UWuXYZoRLG4_EKD4jdk1WuA', 'UWrHzMQEVgjklCckIVHogQg']}
+        return landmarks[resolution]  # ideally we should have computed this piece
+
+    def _heuristic(self, u, v):
+        """
+        Returns the heuristic distance between u and v
+        :return: x where distance(u to v) >= x
+        """
+        best = 0
+        for l in self.index:
+            if v in self.index[l] and u in self.index[l]:
+                h = self.index[l][v] - self.index[l][u]
+                if h > best:
+                    best = h
+        return best
 
 
 def topk_naive(G, s, R, K):

@@ -53,6 +53,22 @@ def extend_dictionary():
     __builtin__.dict = myDict
 
 
+def path_length(G, path, weight="weight"):
+    """
+    Computes the length of the path
+    :param G: NetworkX directed graph
+    :param path: ordered list of vertices in G
+    :param weight: attribute of edge that has the weight/length of the edge
+    :return: the length of the path as a number
+    """
+    length = 0
+    u = path[0]
+    for v in path[1:]:
+        length += G[u][v][weight]
+        u = v
+    return length
+
+
 class myDict(dict):
     def upsert(self, k, v):
         """

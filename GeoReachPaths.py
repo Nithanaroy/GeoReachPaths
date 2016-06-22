@@ -76,6 +76,7 @@ class GeoReachPaths:
         # self._betweeness_landmarks()
         # self._top_social_landmarks()
         self._top_reachable_landmarks()
+        print 'Resolution: %s. Landmarks: %s' % (self._DEFAULT_RES, self.social_index.keys())
 
     def _top_reachable_landmarks(self):
         """
